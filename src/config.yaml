@@ -10,7 +10,7 @@ credentials:
       first_name: Admin
       last_name: IMI
       logged_in: true
-      password: $2b$12$9wA9V4RgEy566qneKNFHiOmLLRrujQkpPjJpbtRPLvP.vXMnSvDRS
+      password: $2b$12$Z9y5TduaSyJ1LS7mHMLCSOe.zuRi7v2.D00d4FM/UAIhBzS1y.1Ba
     joao_pedro:
       email: joao.pedro@integral-imi.com.br
       failed_login_attempts: 0

@@ -3,6 +3,7 @@
 
 """
 Script para a geração do gráfico e visualização dos dados
+(agora com dados já em metros e milímetros — sem conversões)
 """
 
 import os
@@ -14,15 +15,6 @@ from streamlit_plotly_events import plotly_events
 
 
 def _build_image_map(uploaded_file, sheet_name="Photos"):
-    """
-    Lê uma planilha opcional com o mapeamento de imagens.
-    Espera colunas (case-insensitive):
-      - wall (ou componente)
-      - tube (inteiro/str)
-      - elevation_m (ou elevation_ft)
-      - path (string com caminho relativo/absoluto)
-    Retorna um dicionário: {(wall, tube_str, round(elev_m, 3)) : path}
-    """
     try:
         xls = pd.ExcelFile(uploaded_file)
         if sheet_name not in xls.sheet_names:
@@ -31,7 +23,6 @@ def _build_image_map(uploaded_file, sheet_name="Photos"):
         df = pd.read_excel(uploaded_file, sheet_name)
         df.columns = [str(c).strip().lower() for c in df.columns]
 
-        # Normaliza nomes
         col_wall = "wall" if "wall" in df.columns else (
             "componente" if "componente" in df.columns else None
         )
@@ -45,7 +36,6 @@ def _build_image_map(uploaded_file, sheet_name="Photos"):
         if not (col_wall and col_tube and col_path):
             return {}
 
-        # Elevação em m ou ft
         if "elevation_m" in df.columns:
             elev_m = df["elevation_m"].astype(float)
         elif "elevation_ft" in df.columns:
@@ -66,16 +56,8 @@ def _build_image_map(uploaded_file, sheet_name="Photos"):
 
 
 def _guess_image_path(base_folder, wall, tube, elev_m):
-    """
-    Caso não exista planilha Photos, tenta adivinhar caminhos de arquivo por padrão.
-    Tenta jpg/png e diversos arredondamentos, nos formatos:
-      {base}/{WALL}_T{TUBE}_E{elev_m:.3f}.ext
-      {base}/{WALL}_T{TUBE}.ext (fallback por tubo)
-      Também tenta com elevação em pés.
-    """
     candidates = []
 
-    # Em metros (vários arredondamentos)
     for ndec in (3, 2, 1, 0):
         fmt = f"{{:.{ndec}f}}"
         em = fmt.format(float(elev_m))
@@ -84,22 +66,6 @@ def _guess_image_path(base_folder, wall, tube, elev_m):
             os.path.join(base_folder, f"{wall}_T{tube}_E{em}.png"),
         ]
 
-    # Em pés
-    elev_ft = float(elev_m) * 3.281
-    for ndec in (3, 2, 1, 0):
-        fmt = f"{{:.{ndec}f}}"
-        ef = fmt.format(elev_ft)
-        candidates += [
-            os.path.join(base_folder, f"{wall}_T{tube}_E{ef}ft.jpg"),
-            os.path.join(base_folder, f"{wall}_T{tube}_E{ef}ft.png"),
-        ]
-
-    # Fallback por tubo apenas
-    candidates += [
-        os.path.join(base_folder, f"{wall}_T{tube}.jpg"),
-        os.path.join(base_folder, f"{wall}_T{tube}.png"),
-    ]
-
     for p in candidates:
         if os.path.exists(p):
             return p
@@ -107,47 +73,31 @@ def _guess_image_path(base_folder, wall, tube, elev_m):
 
 
 def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_sheet="Photos"):
-    """
-    Cria o gráfico e suas funcionalidades a partir do arquivo e suas planilhas,
-    com opção de reduzir as leituras em X mm e em X% (independentes),
-    escala travada e ≤ 0 em preto. Agora:
-      - Tooltip também aparece em células pretas (≤0).
-      - Clique no ponto exibe imagem associada (via planilha Photos ou pasta).
-    """
-    # Seleção da planilha
     selected_sheet = st.sidebar.selectbox("Componente:", sheets)
 
-    # Leitura e pré-processamento
     dataframe = pd.read_excel(uploaded_file, selected_sheet)
     dataframe = dataframe.iloc[3:].reset_index(drop=True)
 
-    # Eixo Y (elevação em m)
-    first_col = dataframe.iloc[:, 0].copy() / 3.281
+    # Agora o eixo Y já está em metros
+    first_col = pd.to_numeric(dataframe.iloc[:, 0], errors="coerce")
     dataframe.set_index(dataframe.columns[0], inplace=True)
 
-    # Leituras em mm (DF base sem redução)
-    dataframe = dataframe.apply(pd.to_numeric, errors="coerce") * 25.4
+    # Leituras já estão em milímetros
+    dataframe = dataframe.apply(pd.to_numeric, errors="coerce")
 
-    # Escala FIXA baseada no DF original (antes de qualquer redução)
     fixed_zmin = float(dataframe.min().min())
     fixed_zmax = float(dataframe.max().max())
 
-    # ---------------------------
-    # Estado dos ajustes
-    # ---------------------------
-    # mm
     if "reduction_mm" not in st.session_state:
         st.session_state.reduction_mm = 0.0
     if "reduction_mm_on" not in st.session_state:
         st.session_state.reduction_mm_on = False
 
-    # %
     if "reduction_percent" not in st.session_state:
-        st.session_state.reduction_percent = 0.0  # em %
+        st.session_state.reduction_percent = 0.0
     if "reduction_percent_on" not in st.session_state:
         st.session_state.reduction_percent_on = False
 
-    # ===== Aplica REDUÇÕES (sempre partindo do dataframe ORIGINAL) =====
     factor = 1.0 - (st.session_state.reduction_percent / 100.0) \
         if st.session_state.reduction_percent_on and st.session_state.reduction_percent > 0 else 1.0
     working_df = dataframe * factor
@@ -155,15 +105,11 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     if st.session_state.reduction_mm_on and st.session_state.reduction_mm > 0:
         working_df = working_df - st.session_state.reduction_mm
 
-    # Limites de elevação (para ticks do eixo)
-    min_yval = working_df.last_valid_index() / 3.281
-    max_yval = working_df.first_valid_index() / 3.281
+    # Agora sem dividir por 3.281 — o índice já é em metros
+    min_yval = float(working_df.last_valid_index())
+    max_yval = float(working_df.first_valid_index())
 
-    # ---------------------------
-    # Controles na sidebar
-    # ---------------------------
     with st.sidebar:
-        # Slider do intervalo de espessuras (baseado no DF ajustado)
         slider_min = float(np.nanmin(working_df.values))
         slider_max = float(np.nanmax(working_df.values))
         if slider_min == slider_max:
@@ -177,7 +123,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
             key="thickness_range",
         )
 
-        # Percentual de leituras dentro do intervalo
         condition_percent = (working_df >= min_value) & (working_df <= max_value)
         dataframe_total = working_df.count().sum()
         filtered_total = working_df[condition_percent].count().sum()
@@ -190,7 +135,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
 
         st.markdown("#### Ajuste nas leituras")
 
-        # --- Reduzir em (mm) ---
         reduction_input_mm = st.number_input(
             "Reduzir espessura em (mm):",
             min_value=0.0,
@@ -214,7 +158,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
                 f"Ajuste em mm ativo: −{st.session_state.reduction_mm:.3f} mm".replace(".", ",")
             )
 
-        # --- Reduzir em (%) ---
         reduction_input_pct = st.number_input(
             "Reduzir espessura em (%):",
             min_value=0.0,
@@ -240,17 +183,11 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
                  f"{st.session_state.reduction_percent:.1f}%").replace(".", ",")
             )
 
-    # --- Dados para o gráfico ---
     in_range = (working_df >= min_value) & (working_df <= max_value) & (working_df > 0)
-
-    # Para coloração: só as dentro do range
     color_values = working_df.where(in_range, np.nan)
-
-    # Máscara preta para valores ≤ 0 (independente do slider)
     mask_black_bool = (working_df <= 0)
     black_mask = np.where(mask_black_bool, 1, np.nan)
 
-    # Heatmap base (escala TRAVADA) — mantém HOVER nas válidas do range
     fig = go.Figure(data=go.Heatmap(
         z=color_values,
         y=first_col,
@@ -264,7 +201,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         hoverongaps=False
     ))
 
-    # Camada preta (≤ 0 mm) — AGORA com hover (usa customdata)
     fig.add_trace(go.Heatmap(
         z=black_mask,
         y=first_col,
@@ -278,7 +214,7 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
             '<b>Espessura:</b> %{customdata:.3f} mm'
             '<extra></extra>'
         ),
-        customdata=working_df.values,   # <- chave para o balão aparecer também no preto
+        customdata=working_df.values,
         hoverongaps=False,
         opacity=1.0
     ))
@@ -298,8 +234,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         ),
     )
 
-    # === Captura de CLIQUE e exibição de imagem ===
-    # Dica: use uma key por planilha para o estado não conflitar
     selected = plotly_events(
         fig,
         click_event=True,
@@ -314,7 +248,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     if (working_df <= 0).any().any():
         st.warning("Algumas leituras ficaram ≤ 0 mm após os ajustes. Elas estão destacadas em preto.")
 
-    # Pré-carrega mapa de imagens (uma vez por arquivo)
     if "image_map_cache" not in st.session_state:
         st.session_state.image_map_cache = _build_image_map(uploaded_file, sheet_name=image_map_sheet)
 
@@ -323,12 +256,9 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         tube_clicked = str(pt.get("x"))
         elev_clicked_m = float(pt.get("y"))
 
-        # Acha a elevação medida mais próxima (para casar com a base)
-        # first_col é uma Series de elevações em m, na mesma ordem das linhas
         idx_nearest = (first_col - elev_clicked_m).abs().idxmin()
         elev_row_m = float(first_col.iloc[idx_nearest])
 
-        # Busca imagem: 1) planilha Photos; 2) pasta + padrões
         img_path = None
         mp = st.session_state.image_map_cache or {}
         k = (str(selected_sheet), tube_clicked, round(elev_row_m, 3))
@@ -347,6 +277,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
             st.info("Nenhuma imagem encontrada para este ponto. "
                     "Você pode adicionar uma planilha `Photos` ao Excel (wall, tube, elevation_m, path) "
                     f"ou salvar as imagens em `{image_folder}` usando o padrão "
-                    "`{WALL}_T{TUBO}_E{ELEV}.jpg|png` (em m ou ft).")
+                    "`{WALL}_T{TUBO}_E{ELEV}.jpg|png` (em m).")
 
     return working_df

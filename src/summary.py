@@ -27,16 +27,15 @@ def generate_summary(uploaded_file, sheets):
         min_thickness = summarize[summarize.columns[1:]].min().nsmallest(3)
 
         tubes_range = f"{summarize.columns[0]} - {summarize.columns[-1]}"
-        elevation_range = f"{
-            summarize_min_elevation:.3f} m - {summarize_max_elevation:.3f} m" \
+        elevation_range = f"{summarize_min_elevation:.3f} m - {summarize_max_elevation:.3f} m" \
             .replace(".", ",")
         avg_thickness = f"{avg_thickness:.3f}".replace(".", ",") + " mm"
 
         data = []
         for index in min_thickness.index:
             thickness_value = min_thickness[index]
-            elevation_value = summarize.index[summarize[index]
-                                              == thickness_value][0] / 3.281
+            # Agora as elevações já estão em metros — não dividir por 3.281
+            elevation_value = summarize.index[summarize[index] == thickness_value][0]
             data.append({
                 "min_reading": f"{thickness_value:.3f} mm".replace(".", ","),
                 "tube": f"#{index}",
@@ -118,7 +117,6 @@ def generate_summary(uploaded_file, sheets):
                     <tbody>
         """
 
-        # Adiciona as linhas da tabela dinamicamente
         for row in data:
             html_content += f"""
             <tr>
@@ -128,7 +126,6 @@ def generate_summary(uploaded_file, sheets):
             </tr>
             """
 
-        # Fecha a estrutura HTML
         html_content += """
                         </tbody>
                     </table>
@@ -137,5 +134,4 @@ def generate_summary(uploaded_file, sheets):
             </html>
             """
 
-        # Exibe o HTML no Streamlit
         st.components.v1.html(html_content, height=350, width=500)

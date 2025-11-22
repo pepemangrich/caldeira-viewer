@@ -18,10 +18,10 @@ def generate_summary(uploaded_file, sheets):
         summarize = pd.read_excel(uploaded_file, sheet)
         summarize = summarize.iloc[3:].reset_index(drop=True)
         summarize.set_index(summarize.columns[0], inplace=True)
-        summarize = summarize.apply(pd.to_numeric, errors='coerce') * 25.4
+        summarize = summarize.apply(pd.to_numeric, errors='coerce')
 
-        summarize_max_elevation = summarize.first_valid_index() / 3.281
-        summarize_min_elevation = summarize.last_valid_index() / 3.281
+        summarize_max_elevation = summarize.first_valid_index()
+        summarize_min_elevation = summarize.last_valid_index()
         avg_thickness = summarize[summarize.columns[1:]].mean(
             axis=None, numeric_only=True)
         min_thickness = summarize[summarize.columns[1:]].min().nsmallest(3)

@@ -85,9 +85,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     # Leituras já estão em milímetros
     dataframe = dataframe.apply(pd.to_numeric, errors="coerce")
 
-    fixed_zmin = float(dataframe.min().min())
-    fixed_zmax = float(dataframe.max().max())
-
     if "reduction_mm" not in st.session_state:
         st.session_state.reduction_mm = 0.0
     if "reduction_mm_on" not in st.session_state:
@@ -183,6 +180,41 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
                  f"{st.session_state.reduction_percent:.1f}%").replace(".", ",")
             )
 
+    # ======== ESCALA DE CORES FIXA (MISSÃO 3) ========
+    LOW_MM = 3.5
+    HIGH_MM = 4.2
+
+    vals = working_df.values
+    if np.isfinite(vals).any():
+        fixed_zmin = float(np.nanmin(vals))
+        fixed_zmax = float(np.nanmax(vals))
+    else:
+        fixed_zmin, fixed_zmax = 0.0, 1.0
+
+    # garantir que 5.5 e 6.5 sempre existam dentro da escala
+    fixed_zmin = min(fixed_zmin, LOW_MM)
+    fixed_zmax = max(fixed_zmax, HIGH_MM)
+
+    den = (fixed_zmax - fixed_zmin) if fixed_zmax != fixed_zmin else 1.0
+    p_low = (LOW_MM - fixed_zmin) / den
+    p_high = (HIGH_MM - fixed_zmin) / den
+
+    # clamp 0..1
+    p_low = max(0.0, min(1.0, p_low))
+    p_high = max(0.0, min(1.0, p_high))
+
+    # Faixas fixas com gradientes
+    threshold_colorscale = [
+        [0.0, "red"],
+        [p_low, "red"],
+        [p_low, "orange"],
+        [0.5, "yellow"],
+        [p_high, "yellow"],
+        [p_high, "lime"],
+        [1.0, "green"],
+    ]
+    # ================================================
+
     in_range = (working_df >= min_value) & (working_df <= max_value) & (working_df > 0)
     color_values = working_df.where(in_range, np.nan)
     mask_black_bool = (working_df <= 0)
@@ -194,7 +226,7 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         x=working_df.columns.astype(str),
         zmin=fixed_zmin,
         zmax=fixed_zmax,
-        colorscale=[[0, 'red'], [0.35, 'yellow'], [1, 'green']],
+        colorscale=threshold_colorscale,
         hovertemplate='<b>Tubo:</b> %{x}<br>'
                       '<b>Elevação:</b> %{y:.3f} m<br>'
                       '<b>Espessura:</b> %{z:.3f} mm<extra></extra>',
@@ -234,14 +266,14 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         ),
     )
 
-    selected = plotly_events(
-        fig,
-        click_event=True,
-        hover_event=False,
-        select_event=False,
-        override_height=600,
-        key=f"plt_events_{selected_sheet}"
-    )
+    # selected = plotly_events(
+    #     fig,
+    #     click_event=True,
+    #     hover_event=False,
+    #     select_event=False,
+    #     override_height=600,
+    #     key=f"plt_events_{selected_sheet}"
+    # )
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -251,32 +283,32 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     if "image_map_cache" not in st.session_state:
         st.session_state.image_map_cache = _build_image_map(uploaded_file, sheet_name=image_map_sheet)
 
-    if selected:
-        pt = selected[0]
-        tube_clicked = str(pt.get("x"))
-        elev_clicked_m = float(pt.get("y"))
+    # if selected:
+    #     pt = selected[0]
+    #     tube_clicked = str(pt.get("x"))
+    #     elev_clicked_m = float(pt.get("y"))
 
-        idx_nearest = (first_col - elev_clicked_m).abs().idxmin()
-        elev_row_m = float(first_col.iloc[idx_nearest])
+    #     idx_nearest = (first_col - elev_clicked_m).abs().idxmin()
+    #     elev_row_m = float(first_col.iloc[idx_nearest])
 
-        img_path = None
-        mp = st.session_state.image_map_cache or {}
-        k = (str(selected_sheet), tube_clicked, round(elev_row_m, 3))
-        if k in mp:
-            img_path = mp[k]
-        else:
-            img_path = _guess_image_path(image_folder, str(selected_sheet), tube_clicked, elev_row_m)
+    #     img_path = None
+    #     mp = st.session_state.image_map_cache or {}
+    #     k = (str(selected_sheet), tube_clicked, round(elev_row_m, 3))
+    #     if k in mp:
+    #         img_path = mp[k]
+    #     else:
+    #         img_path = _guess_image_path(image_folder, str(selected_sheet), tube_clicked, elev_row_m)
 
-        st.markdown(
-            f"**Ponto selecionado** → Parede: `{selected_sheet}` • Tubo: `#{tube_clicked}` • Elevação: `{elev_row_m:.3f} m`"
-            .replace(".", ",")
-        )
-        if img_path and os.path.exists(img_path):
-            st.image(img_path, caption=f"{selected_sheet} — Tubo #{tube_clicked} — {elev_row_m:.3f} m")
-        else:
-            st.info("Nenhuma imagem encontrada para este ponto. "
-                    "Você pode adicionar uma planilha `Photos` ao Excel (wall, tube, elevation_m, path) "
-                    f"ou salvar as imagens em `{image_folder}` usando o padrão "
-                    "`{WALL}_T{TUBO}_E{ELEV}.jpg|png` (em m).")
+    #     st.markdown(
+    #         f"**Ponto selecionado** → Parede: `{selected_sheet}` • Tubo: `#{tube_clicked}` • Elevação: `{elev_row_m:.3f} m`"
+    #         .replace(".", ",")
+    #     )
+    #     if img_path and os.path.exists(img_path):
+    #         st.image(img_path, caption=f"{selected_sheet} — Tubo #{tube_clicked} — {elev_row_m:.3f} m")
+    #     else:
+    #         st.info("Nenhuma imagem encontrada para este ponto. "
+    #                 "Você pode adicionar uma planilha `Photos` ao Excel (wall, tube, elevation_m, path) "
+    #                 f"ou salvar as imagens em `{image_folder}` usando o padrão "
+    #                 "`{WALL}_T{TUBO}_E{ELEV}.jpg|png` (em m).")
 
     return working_df

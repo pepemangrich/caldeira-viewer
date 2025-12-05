@@ -11,14 +11,11 @@ credentials:
       last_name: IMI
       logged_in: true
       password: $2b$12$Z9y5TduaSyJ1LS7mHMLCSOe.zuRi7v2.D00d4FM/UAIhBzS1y.1Ba
-    joao_pedro:
-      email: joao.pedro@integral-imi.com.br
-      failed_login_attempts: 0
-      first_name: "Jo\xE3o"
-      last_name: Pedro
-      logged_in: true
-      password: $2b$12$WmXtoLvUZADI2azwvgwPuuzluTa9g1DLAYyftwaFF8ItdKp93kkeu
-      roles:
-      - admin
-      - editor
-      - viewer
+    
+    # H2F_Alumar:
+    #   email: h2f_alumar@integral-imi.com.br
+    #   failed_login_attempts: 0
+    #   first_name: H2F
+    #   last_name: Alumar
+    #   logged_in: false
+    #   password: $2b$12$rPDzhmhRXyD58aoCbrspNOPWsAGgj/8M87LaQKg4MIrFnTJ1mIWI.

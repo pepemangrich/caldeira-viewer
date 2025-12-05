@@ -237,14 +237,16 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         z=color_values,
         y=first_col,
         x=working_df.columns.astype(str),
-        zmin=fixed_zmin,
-        zmax=fixed_zmax,
+
+        # USE SOMENTE ESTA ESCALA
+        zmin=FIX_MIN,
+        zmax=FIX_MAX,
+
         colorscale=colorscale,
-        zmin=zmin,
-        zmax=zmax,
+
         hovertemplate='<b>Tubo:</b> %{x}<br>'
-                      '<b>Elevação:</b> %{y:.3f} m<br>'
-                      '<b>Espessura:</b> %{z:.3f} mm<extra></extra>',
+                    '<b>Elevação:</b> %{y:.3f} m<br>'
+                    '<b>Espessura:</b> %{z:.3f} mm<extra></extra>',
         hoverongaps=False
     ))
 

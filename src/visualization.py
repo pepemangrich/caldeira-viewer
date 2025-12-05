@@ -191,7 +191,7 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     else:
         fixed_zmin, fixed_zmax = 0.0, 1.0
 
-    # garantir que 5.5 e 6.5 sempre existam dentro da escala
+    # garantir que 3.5 e 4.2 sempre existam dentro da escala
     fixed_zmin = min(fixed_zmin, LOW_MM)
     fixed_zmax = max(fixed_zmax, HIGH_MM)
 
@@ -203,16 +203,29 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     p_low = max(0.0, min(1.0, p_low))
     p_high = max(0.0, min(1.0, p_high))
 
-    # Faixas fixas com gradientes
-    threshold_colorscale = [
-        [0.0, "red"],
-        [p_low, "red"],
-        [p_low, "orange"],
-        [0.5, "yellow"],
-        [p_high, "yellow"],
-        [p_high, "lime"],
-        [1.0, "green"],
+    FIX_MIN = 2.5   # mínimo absoluto da escala
+    FIX_MAX = 9.0   # máximo absoluto da escala
+
+    def normalize(v):
+        return (v - FIX_MIN) / (FIX_MAX - FIX_MIN)
+
+    colorscale = [
+        # Faixa vermelha
+        [normalize(FIX_MIN), "darkred"],
+        [normalize(3.5), "red"],
+
+        # Faixa amarela
+        [normalize(3.6), "yellow"],
+        [normalize(4.1), "gold"],
+
+        # Faixa verde
+        [normalize(4.2), "lightgreen"],
+        [normalize(FIX_MAX), "green"]
     ]
+
+    zmin = FIX_MIN
+    zmax = FIX_MAX
+
     # ================================================
 
     in_range = (working_df >= min_value) & (working_df <= max_value) & (working_df > 0)
@@ -226,7 +239,9 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         x=working_df.columns.astype(str),
         zmin=fixed_zmin,
         zmax=fixed_zmax,
-        colorscale=threshold_colorscale,
+        colorscale=colorscale,
+        zmin=zmin,
+        zmax=zmax,
         hovertemplate='<b>Tubo:</b> %{x}<br>'
                       '<b>Elevação:</b> %{y:.3f} m<br>'
                       '<b>Espessura:</b> %{z:.3f} mm<extra></extra>',

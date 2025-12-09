@@ -180,29 +180,7 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
                  f"{st.session_state.reduction_percent:.1f}%").replace(".", ",")
             )
 
-    # ======== ESCALA DE CORES FIXA (MISSÃO 3) ========
-    LOW_MM = 3.5
-    HIGH_MM = 4.2
-
-    vals = working_df.values
-    if np.isfinite(vals).any():
-        fixed_zmin = float(np.nanmin(vals))
-        fixed_zmax = float(np.nanmax(vals))
-    else:
-        fixed_zmin, fixed_zmax = 0.0, 1.0
-
-    # garantir que 3.5 e 4.2 sempre existam dentro da escala
-    fixed_zmin = min(fixed_zmin, LOW_MM)
-    fixed_zmax = max(fixed_zmax, HIGH_MM)
-
-    den = (fixed_zmax - fixed_zmin) if fixed_zmax != fixed_zmin else 1.0
-    p_low = (LOW_MM - fixed_zmin) / den
-    p_high = (HIGH_MM - fixed_zmin) / den
-
-    # clamp 0..1
-    p_low = max(0.0, min(1.0, p_low))
-    p_high = max(0.0, min(1.0, p_high))
-
+    # ======== ESCALA DE CORES FIXA ========
     FIX_MIN = 2.5   # mínimo absoluto da escala
     FIX_MAX = 9.0   # máximo absoluto da escala
 
@@ -210,50 +188,47 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         return (v - FIX_MIN) / (FIX_MAX - FIX_MIN)
 
     colorscale = [
-        # Faixa vermelha
+        # Faixa vermelha (com gradiente dentro)
         [normalize(FIX_MIN), "darkred"],
         [normalize(3.5), "red"],
 
-        # Faixa amarela
+        # Faixa amarela (com gradiente dentro)
         [normalize(3.6), "yellow"],
         [normalize(4.1), "gold"],
 
-        # Faixa verde
+        # Faixa verde (com gradiente dentro)
         [normalize(4.2), "lightgreen"],
-        [normalize(FIX_MAX), "green"]
+        [normalize(FIX_MAX), "green"],
     ]
-
-    zmin = FIX_MIN
-    zmax = FIX_MAX
-
-    # ================================================
+    # =====================================
 
     in_range = (working_df >= min_value) & (working_df <= max_value) & (working_df > 0)
     color_values = working_df.where(in_range, np.nan)
     mask_black_bool = (working_df <= 0)
     black_mask = np.where(mask_black_bool, 1, np.nan)
 
+    # --- garante X como lista (categorias) e na ordem original ---
+    cols = working_df.columns.astype(str).tolist()
+
     fig = go.Figure(data=go.Heatmap(
         z=color_values,
         y=first_col,
-        x=working_df.columns.astype(str),
+        x=cols,  # <- lista de categorias na ordem
 
-        # USE SOMENTE ESTA ESCALA
         zmin=FIX_MIN,
         zmax=FIX_MAX,
-
         colorscale=colorscale,
 
         hovertemplate='<b>Tubo:</b> %{x}<br>'
-                    '<b>Elevação:</b> %{y:.3f} m<br>'
-                    '<b>Espessura:</b> %{z:.3f} mm<extra></extra>',
+                      '<b>Elevação:</b> %{y:.3f} m<br>'
+                      '<b>Espessura:</b> %{z:.3f} mm<extra></extra>',
         hoverongaps=False
     ))
 
     fig.add_trace(go.Heatmap(
         z=black_mask,
         y=first_col,
-        x=working_df.columns.astype(str),
+        x=cols,  # <- igual ao trace principal
         colorscale=[[0, 'black'], [1, 'black']],
         zmin=0, zmax=1,
         showscale=False,
@@ -269,7 +244,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     ))
 
     # ---- ticks do eixo X: marcar de 5 em 5 colunas ----
-    cols = working_df.columns.astype(str).tolist()
     tick_idx = list(range(0, len(cols), 5))  # 0, 5, 10, 15, ...
     if cols and (len(cols) - 1) not in tick_idx:
         tick_idx.append(len(cols) - 1)       # garante o último
@@ -283,25 +257,27 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         yaxis=dict(
             title="Elevação",
             tickvals=[min_yval, max_yval],
-            ticktext=[f"{min_yval:,.3f}".replace('.', ',') + " m",
-                      f"{max_yval:,.3f}".replace('.', ',') + " m"],
+            ticktext=[
+                f"{min_yval:,.3f}".replace(".", ",") + " m",
+                f"{max_yval:,.3f}".replace(".", ",") + " m",
+            ],
         ),
         xaxis=dict(
             title="Tubos",
+
+            # FORÇA o eixo como categórico e preserva a ordem
+            type="category",
+            categoryorder="array",
+            categoryarray=cols,
+
+            # ticks 5 em 5
             tickmode="array",
             tickvals=x_tickvals,
             ticktext=x_ticktext,
+
+            automargin=True,
         ),
     )
-
-    # selected = plotly_events(
-    #     fig,
-    #     click_event=True,
-    #     hover_event=False,
-    #     select_event=False,
-    #     override_height=600,
-    #     key=f"plt_events_{selected_sheet}"
-    # )
 
     st.plotly_chart(fig, use_container_width=True)
 
@@ -310,7 +286,7 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
 
     if "image_map_cache" not in st.session_state:
         st.session_state.image_map_cache = _build_image_map(uploaded_file, sheet_name=image_map_sheet)
-
+        
     # if selected:
     #     pt = selected[0]
     #     tube_clicked = str(pt.get("x"))

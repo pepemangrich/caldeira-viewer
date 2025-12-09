@@ -20,15 +20,26 @@ def generate_summary(uploaded_file, sheets):
         summarize.set_index(summarize.columns[0], inplace=True)
         summarize = summarize.apply(pd.to_numeric, errors='coerce')
 
-        summarize_max_elevation = summarize.first_valid_index()
-        summarize_min_elevation = summarize.last_valid_index()
+        # garante índice numérico (elevação em m)
+        summarize.index = pd.to_numeric(
+            summarize.index.astype(str).str.replace(",", ".", regex=False),
+            errors="coerce"
+        )
+        summarize = summarize[~summarize.index.isna()]
+        if summarize.empty:
+            continue
+
+        summarize_min_elevation = float(np.nanmin(summarize.index.values))
+        summarize_max_elevation = float(np.nanmax(summarize.index.values))
+
+        elevation_range = f"{summarize_min_elevation:.3f} m - {summarize_max_elevation:.3f} m".replace(".", ",")
+
+
         avg_thickness = summarize[summarize.columns[1:]].mean(
             axis=None, numeric_only=True)
         min_thickness = summarize[summarize.columns[1:]].min().nsmallest(3)
 
         tubes_range = f"{summarize.columns[0]} - {summarize.columns[-1]}"
-        elevation_range = f"{summarize_min_elevation:.3f} m - {summarize_max_elevation:.3f} m" \
-            .replace(".", ",")
         avg_thickness = f"{avg_thickness:.3f}".replace(".", ",") + " mm"
 
         data = []

@@ -6,6 +6,7 @@ Script para geração do sumário e dados gerais relacionados às paredes de tub
 da caldeira
 """
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -16,50 +17,68 @@ def generate_summary(uploaded_file, sheets):
     """
     for sheet in sheets:
         summarize = pd.read_excel(uploaded_file, sheet)
-        summarize = summarize.iloc[3:].reset_index(drop=True)
-        summarize.set_index(summarize.columns[0], inplace=True)
-        summarize = summarize.apply(pd.to_numeric, errors='coerce')
 
-        # garante índice numérico (elevação em m)
-        summarize.index = pd.to_numeric(
-            summarize.index.astype(str).str.replace(",", ".", regex=False),
-            errors="coerce"
+        # Mantém o mesmo corte que você já usava
+        summarize = summarize.iloc[3:].reset_index(drop=True)
+
+        # 1ª coluna = elevação (m). Garantir que seja numérica.
+        elev = pd.to_numeric(
+            summarize.iloc[:, 0].astype(str).str.replace(",", ".", regex=False),
+            errors="coerce",
         )
-        summarize = summarize[~summarize.index.isna()]
+
+        # Remove linhas sem elevação válida
+        summarize = summarize.loc[elev.notna()].copy()
+        elev = elev.loc[elev.notna()].astype(float)
+
         if summarize.empty:
+            # não tenta formatar nada
             continue
 
+        # Define elevação como índice
+        summarize.iloc[:, 0] = elev.values
+        summarize.set_index(summarize.columns[0], inplace=True)
+
+        # Converte leituras para numérico
+        summarize = summarize.apply(pd.to_numeric, errors="coerce")
+
+        # Range de elevação (robusto)
         summarize_min_elevation = float(np.nanmin(summarize.index.values))
         summarize_max_elevation = float(np.nanmax(summarize.index.values))
 
-        elevation_range = f"{summarize_min_elevation:.3f} m - {summarize_max_elevation:.3f} m".replace(".", ",")
-
-
-        avg_thickness = summarize[summarize.columns[1:]].mean(
-            axis=None, numeric_only=True)
-        min_thickness = summarize[summarize.columns[1:]].min().nsmallest(3)
+        # Estatísticas usando TODAS as colunas (tubos)
+        avg_thickness_val = float(np.nanmean(summarize.values))
+        min_thickness = summarize.min().nsmallest(3)
 
         tubes_range = f"{summarize.columns[0]} - {summarize.columns[-1]}"
-        avg_thickness = f"{avg_thickness:.3f}".replace(".", ",") + " mm"
+        elevation_range = (
+            f"{summarize_min_elevation:.3f} m - {summarize_max_elevation:.3f} m"
+        ).replace(".", ",")
+        avg_thickness = (f"{avg_thickness_val:.3f}".replace(".", ",") + " mm")
 
         data = []
-        for index in min_thickness.index:
-            thickness_value = min_thickness[index]
-            # Agora as elevações já estão em metros — não dividir por 3.281
-            elevation_value = summarize.index[summarize[index] == thickness_value][0]
-            data.append({
-                "min_reading": f"{thickness_value:.3f} mm".replace(".", ","),
-                "tube": f"#{index}",
-                "elevation": f"{elevation_value:.3f} m".replace(".", ",")
-            })
+        for tube_col in min_thickness.index:
+            thickness_value = float(min_thickness[tube_col])
+
+            matches = summarize.index[summarize[tube_col] == thickness_value]
+            elev_value = float(matches[0]) if len(matches) else float("nan")
+
+            data.append(
+                {
+                    "min_reading": f"{thickness_value:.3f} mm".replace(".", ","),
+                    "tube": f"#{tube_col}",
+                    "elevation": f"{elev_value:.3f} m".replace(".", ",")
+                    if np.isfinite(elev_value)
+                    else "-",
+                }
+            )
 
         html_content = f"""
         <!DOCTYPE html>
-        <html lang="en">
+        <html lang="pt-BR">
         <head>
             <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width,
-            initial-scale=1.0">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
                 body {{
                     font-family: Arial, sans-serif;
@@ -138,11 +157,11 @@ def generate_summary(uploaded_file, sheets):
             """
 
         html_content += """
-                        </tbody>
-                    </table>
-                </div>
-            </body>
-            </html>
-            """
+                    </tbody>
+                </table>
+            </div>
+        </body>
+        </html>
+        """
 
         st.components.v1.html(html_content, height=350, width=500)

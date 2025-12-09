@@ -57,7 +57,6 @@ def _build_image_map(uploaded_file, sheet_name="Photos"):
 
 def _guess_image_path(base_folder, wall, tube, elev_m):
     candidates = []
-
     for ndec in (3, 2, 1, 0):
         fmt = f"{{:.{ndec}f}}"
         em = fmt.format(float(elev_m))
@@ -65,7 +64,6 @@ def _guess_image_path(base_folder, wall, tube, elev_m):
             os.path.join(base_folder, f"{wall}_T{tube}_E{em}.jpg"),
             os.path.join(base_folder, f"{wall}_T{tube}_E{em}.png"),
         ]
-
     for p in candidates:
         if os.path.exists(p):
             return p
@@ -78,11 +76,13 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     dataframe = pd.read_excel(uploaded_file, selected_sheet)
     dataframe = dataframe.iloc[3:].reset_index(drop=True)
 
-    # Agora o eixo Y já está em metros
+    # Eixo Y (elevação) em metros
     first_col = pd.to_numeric(dataframe.iloc[:, 0], errors="coerce")
+
+    # Define elevação como índice
     dataframe.set_index(dataframe.columns[0], inplace=True)
 
-    # Leituras já estão em milímetros
+    # Leituras em mm
     dataframe = dataframe.apply(pd.to_numeric, errors="coerce")
 
     if "reduction_mm" not in st.session_state:
@@ -95,17 +95,17 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     if "reduction_percent_on" not in st.session_state:
         st.session_state.reduction_percent_on = False
 
-    factor = 1.0 - (st.session_state.reduction_percent / 100.0) \
-        if st.session_state.reduction_percent_on and st.session_state.reduction_percent > 0 else 1.0
+    factor = (
+        1.0 - (st.session_state.reduction_percent / 100.0)
+        if st.session_state.reduction_percent_on and st.session_state.reduction_percent > 0
+        else 1.0
+    )
     working_df = dataframe * factor
 
     if st.session_state.reduction_mm_on and st.session_state.reduction_mm > 0:
         working_df = working_df - st.session_state.reduction_mm
 
-    # limites do Y (em metros)
-    min_yval = float(np.nanmin(first_col.values)) if np.isfinite(first_col.values).any() else 0.0
-    max_yval = float(np.nanmax(first_col.values)) if np.isfinite(first_col.values).any() else 0.0
-
+    # Sidebar (filtros)
     with st.sidebar:
         slider_min = float(np.nanmin(working_df.values))
         slider_max = float(np.nanmax(working_df.values))
@@ -202,7 +202,7 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     mask_black_bool = (working_df <= 0)
     black_mask = np.where(mask_black_bool, 1, np.nan)
 
-    # --- X categórico na ordem original ---
+    # X categórico na ordem original
     cols = working_df.columns.astype(str).tolist()
 
     fig = go.Figure(data=go.Heatmap(
@@ -245,24 +245,28 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
     x_ticktext = x_tickvals
     # ---------------------------------------------------
 
-    # ---- ticks do eixo Y: marcar de 2 em 2 metros ----
-    y_min = float(np.nanmin(first_col.values)) if np.isfinite(first_col.values).any() else 0.0
-    y_max = float(np.nanmax(first_col.values)) if np.isfinite(first_col.values).any() else 0.0
+    # ---- eixo Y: marcar de 2 em 2 m (dtick) ----
+    y_vals = first_col.values
+    if np.isfinite(y_vals).any():
+        y_min = float(np.nanmin(y_vals))
+        y_max = float(np.nanmax(y_vals))
+    else:
+        y_min, y_max = 0.0, 0.0
 
-    y_start = 2.0 * np.floor(min(y_min, y_max) / 2.0)
-    y_end = 2.0 * np.ceil(max(y_min, y_max) / 2.0)
-
-    y_tickvals = np.arange(y_start, y_end + 0.0001, 2.0)
-    y_ticktext = [f"{v:.0f}".replace(".", ",") + " m" for v in y_tickvals]
+    y_tick0 = 2.0 * np.floor(min(y_min, y_max) / 2.0)
     # ---------------------------------------------------
 
     fig.update_layout(
         hovermode="closest",
         yaxis=dict(
             title="Elevação",
-            tickmode="array",
-            tickvals=y_tickvals,
-            ticktext=y_ticktext,
+            type="linear",
+            tickmode="linear",
+            tick0=y_tick0,
+            dtick=2.0,
+            tickformat=".0f",
+            ticksuffix=" m",
+            autorange="reversed",  # mantém o topo como maior elevação, se seu dado vier “descendo”
         ),
         xaxis=dict(
             title="Tubos",

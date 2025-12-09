@@ -266,7 +266,6 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
             dtick=2.0,
             tickformat=".0f",
             ticksuffix=" m",
-            autorange="reversed",  # mantém o topo como maior elevação, se seu dado vier “descendo”
         ),
         xaxis=dict(
             title="Tubos",

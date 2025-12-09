@@ -268,6 +268,16 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         opacity=1.0
     ))
 
+    # ---- ticks do eixo X: marcar de 5 em 5 colunas ----
+    cols = working_df.columns.astype(str).tolist()
+    tick_idx = list(range(0, len(cols), 5))  # 0, 5, 10, 15, ...
+    if cols and (len(cols) - 1) not in tick_idx:
+        tick_idx.append(len(cols) - 1)       # garante o último
+
+    x_tickvals = [cols[i] for i in tick_idx]
+    x_ticktext = x_tickvals
+    # ---------------------------------------------------
+
     fig.update_layout(
         hovermode="closest",
         yaxis=dict(
@@ -278,8 +288,9 @@ def create_heatmap(uploaded_file, sheets, image_folder="imgs/fotos", image_map_s
         ),
         xaxis=dict(
             title="Tubos",
-            tickvals=[str(working_df.columns[0]), str(working_df.columns[-1])],
-            ticktext=[str(working_df.columns[0]), str(working_df.columns[-1])]
+            tickmode="array",
+            tickvals=x_tickvals,
+            ticktext=x_ticktext,
         ),
     )
 
